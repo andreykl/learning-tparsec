@@ -117,19 +117,19 @@ neadd a (MkList hd tl) = MkList a (hd :: tl)
           [(MkSuccess vb prfb leftsb)] => [MkSuccess (Just va, vb) (lteTransitive prfb (lteSuccLeft prfLTszm)) leftsb]
           _   => []
       _   => case RunParser pb prfLTEmi xs of
-                [(MkSuccess vb prfb leftsb)] => [MkSuccess (Nothing, vb) prfb leftsb]
-                _   => []
+               [(MkSuccess vb prfb leftsb)] => [MkSuccess (Nothing, vb) prfb leftsb]
+               _   => []
 
 cons : (a, Maybe (NEList a)) -> NEList a
 cons (a, Nothing) = mkne a
 cons (a, Just ne) = neadd a ne
 
--- some : All (Parser a) -> All (Parser (NEList a))
--- some p = fix _ (\rec => cons <$> (p <&?> rec))
+some : All(Parser a) -> All(Parser (NEList a))
+some p = fix _ (\rec => let r = cons <$> (p <&?> rec) in r)
 
-partial
-some : All (Parser a) -> All (Parser (NEList a))
-some p = cons <$> (p <&?> box (some p))
+-- partial
+-- some : All (Parser a) -> All (Parser (NEList a))
+-- some p = cons <$> (p <&?> box (some p))
 
 (&?>>=) : Parser a i -> (a -> Box (Parser b) i) -> Parser (a, Maybe b) i
 (&?>>=) pa k = MkParser runpamb where
@@ -144,15 +144,45 @@ some p = cons <$> (p <&?> box (some p))
              [(MkSuccess vb prf leftsb)] => [MkSuccess (va, Just vb) (lteTransitive prf (lteSuccLeft ltszm)) leftsb]
              _ => [MkSuccess (va, Nothing) ltszm lefts]
       _   => []
+ 
+partial
+schainl : Success a i -> Box (Parser (a -> a)) i -> List (Success a i)
+-- schainl : Success a i -> Box (Parser (a -> a)) i -> List (Success a i)
+schainl {a} s@(MkSuccess va prf left {Size=sz}) bpfa = let p11 = ('a', 1) in res where
+  pfa : Parser (a -> a) sz
+  pfa = call bpfa prf 
+  partial
+  res : List (Success a i)
+  res = let sf = RunParser pfa lteRefl left
+        in 
+          case sf of
+            [(MkSuccess f prf' lefts' {Size=sz'})] => 
+              let
+                vfa = f va
+                ret = s :: schainl (MkSuccess vfa (lteTransitive (lteSuccRight prf') prf) lefts') bpfa
+                arg = bpfa
+              in ret
+            _   => []
 
 partial
-schainl : Success a i -> Box (Parser a) i -> List (Success a i)
-schainl s@(MkSuccess va prf left {Size=sz}) bpa = 
-  let pa = call bpa prf 
-  in case RunParser pa lteRefl left of
-       [(MkSuccess va' prf' lefts')] => 
-         let
-           res = s :: schainl (MkSuccess va' (lteTransitive (lteSuccRight prf') prf) lefts') bpa
-           arg = bpa
-         in ?hole
-       _   => [s]
+iterate : Parser a i -> Box (Parser (a -> a)) i -> Parser a i
+iterate pa bpfai = MkParser runprs where
+  partial
+  runprs : LTE m i -> Vect m Char -> List (Success a m)
+  runprs ltemi xs {m} =
+    case RunParser pa ltemi xs of
+      [sa@(MkSuccess va prf lefts)] => schainl sa (MkBox (\lt => call bpfai (lteTransitive lt ltemi)))
+      _                             => []
+
+hchainl : Parser a i -> Box (Parser (a -> b -> a)) i -> Box (Parser b) i -> Parser a i
+hchainl pa bpaba bpb = MkParser rpa where
+  rpa : LTE m i -> Vect m Char -> List (Success a m)
+  rpa ltemi xs = 
+    case RunParser pa ltemi xs of
+      [(MkSuccess va ltszm lefts {Size=sz})] => 
+        let
+          ltszi = lteTransitive ltszm ltemi
+          paba = call bpaba ltszi
+          pb = call bpb ltszi
+        in ?hole
+      _   => []

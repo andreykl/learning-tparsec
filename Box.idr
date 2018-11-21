@@ -30,7 +30,7 @@ ltLower p = lteLower (lteSuccLeft p)
 fixBox : All (Box a :-> a) -> All (Box a)
 fixBox {a} alg = go _ where
   go : (n : Nat) -> Box a n
-  go Z     = MkBox absurd
+  go Z     = MkBox ?absurd
   go (S n) = MkBox (\ mltSn => alg (lteLower (fromLteSucc mltSn) (go n)))
 
 fix : (a : Nat -> Type) -> All (Box a :-> a) -> All a
