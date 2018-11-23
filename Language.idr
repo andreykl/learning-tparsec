@@ -1,5 +1,6 @@
 module Language
 
+import TypeOperators
 import Box
 import Parser
 
@@ -24,18 +25,26 @@ record Language (n : Nat) where
   LTerm : Parser Term n
   LFactor : Parser Factor  n
 
-language : Language i
+parens : All (Box (Parser a) :-> Parser a)
+parens pa = char '(' &> pa <& box (char ')')
+
+language : All (Language)
 language = fix Language $ \ rec =>
-  let
-    aop = Add <$ char '+'
-    aos = Sub <$ char '-'
-    addop =  aop <|> aos
-    mom = Mul <$ char '*'
-    mod = Div <$ char '/'
-    mulop = mom <|> mod
-    -- flit = Lit `Parser.map` decimal
-    femb = FEmb `Parser.map` parens (map LExpr rec)
-    -- factor = femb <|> flit
-    -- term = hchainl (TEmb <$> factor) (box mulop) (box factor)
-    -- expr = hchainl (EEmb <$> term) (box addop) (box term)
-  in ?hole --MkLanguage expr term factor
+    let
+      aop = Add <$ char '+'
+      aos = Sub <$ char '-'
+      addop = aop <|> aos
+      mom = Mul <$ char '*'
+      mod = Div <$ char '/'
+      mulop = mom <|> mod
+      parexpr = parens (pexpr rec)
+      flit = Lit <$> decimal
+      femb = map FEmb parexpr
+      factor = femb <|> flit
+      term = hchainl (TEmb <$> factor) (box mulop) (box factor)
+      expr = hchainl (EEmb <$> term) (box addop) (box term)
+    in MkLanguage expr term factor
+  where
+    pexpr : All(Box (Language) :-> Box (Parser Expr))
+    pexpr bl = MkBox (\lt => LExpr $ call bl lt)
+ 

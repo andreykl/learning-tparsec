@@ -59,7 +59,7 @@ box pa =
        RunParser pa (lteTransitive prfLTE (lteSuccLeft prfLT)) xs
   ))
 
-infixl 5 <&>, <&?>, <?&>, &?>>=
+infixl 5 <&>, <&?>, <?&>, &?>>=, <&, &>
 infixr 4 <$
 
 (<$) : b -> Parser a i -> Parser b i
@@ -84,6 +84,12 @@ infixr 4 <$
                   in [(MkSuccess (va, vb) prf1 left')]
                 _                                         => []
          _         => []
+
+(<&) : Parser a i -> Box (Parser b) i -> Parser a i
+(<&) pa bpb = map fst (pa <&> bpb)
+
+(&>) : Parser a i -> Box (Parser b) i -> Parser b i
+(&>) pa bpb = map snd (pa <&> bpb)
 
 record NEList a where
   constructor MkList
@@ -201,9 +207,26 @@ hchainl pa bpaba bpb =
               _   => []
         _   => [])
 
+satisfy : (p : Char -> Bool) -> Parser Char i
+satisfy p = MkParser runpsat where
+  runpsat : LTE m i -> Vect m Char -> List (Success Char m)
+  runpsat lte xs {m = Z} = []
+  runpsat lte (c :: xs) {m = (S k)} = if p c then [MkSuccess c lteRefl xs] else []
+
+satisfies : (p : Char -> Bool) -> Parser (NEList Char) i
+satisfies p = some (satisfy p)
+
 char : Char -> Parser Char i
-char x = MkParser runpchar where
-  runpchar : LTE m i -> Vect m Char -> List (Success Char m)
-  runpchar lte xs {m = Z} = []
-  runpchar lte (c :: xs) {m = (S k)} = if c == x then [MkSuccess c lteRefl xs] else []
- 
+char x = satisfy (== x)
+
+toList : NEList a -> List a
+toList (MkList hd tl) = hd :: tl
+
+decimal : Parser Nat i
+decimal = MkParser runpdecimal where
+  runpdecimal : LTE m i -> Vect m Char -> List (Success Nat m)
+  runpdecimal ltemi xs = 
+    case RunParser (satisfies isDigit) ltemi xs of
+      [(MkSuccess nelist ltszm lefts {Size=sz})] => [MkSuccess (cast $ pack $ toList nelist) ltszm lefts]
+      _   => []
+
