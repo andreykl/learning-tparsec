@@ -7,6 +7,7 @@ import Box
 import Success
 
 %default total
+%access export
 
 record Parser (a : Type) (n : Nat) where
   constructor MkParser
@@ -59,6 +60,10 @@ box pa =
   ))
 
 infixl 5 <&>, <&?>, <?&>, &?>>=
+infixr 4 <$
+
+(<$) : b -> Parser a i -> Parser b i
+(<$) f pa = (\_ => f) <$> pa
 
 (<&>) : Parser a i -> Box (Parser b) i -> Parser (a, b) i
 --(<&>) : All (Parser a :-> Box (Parser b) :-> Parser (a, b))
@@ -174,15 +179,31 @@ iterate pa bpfai = MkParser runprs where
       [sa@(MkSuccess va prf lefts)] => schainl sa (MkBox (\lt => call bpfai (lteTransitive lt ltemi)))
       _                             => []
 
+partial
 hchainl : Parser a i -> Box (Parser (a -> b -> a)) i -> Box (Parser b) i -> Parser a i
-hchainl pa bpaba bpb = MkParser rpa where
-  rpa : LTE m i -> Vect m Char -> List (Success a m)
-  rpa ltemi xs = 
-    case RunParser pa ltemi xs of
-      [(MkSuccess va ltszm lefts {Size=sz})] => 
-        let
-          ltszi = lteTransitive ltszm ltemi
-          paba = call bpaba ltszi
-          pb = call bpb ltszi
-        in ?hole
-      _   => []
+hchainl pa bpaba bpb = 
+    let 
+      bpaa = (MkBox (\lt => aba'b'aa (call bpaba lt) (call bpb lt)))
+    in iterate pa bpaa
+  where
+    aba'b'aa : Parser (a -> b -> a) i1 -> Parser b i1 -> Parser (a -> a) i1
+    aba'b'aa paba pb = MkParser (\ltemn, xs =>
+      case RunParser paba ltemn xs of
+        [(MkSuccess faba ltszm lefts {Size=sz})] => 
+          let
+            lteszn = (lteTransitive ltszm ltemn)
+          in
+            case RunParser pb (lteSuccLeft lteszn) lefts of
+              [(MkSuccess vb ltsz'sz lefts' {Size=sz'})] => 
+                let
+                  ltesz'm = lteTransitive ltsz'sz (lteSuccLeft ltszm)
+                in [MkSuccess (\a => faba a vb) ltesz'm lefts']
+              _   => []
+        _   => [])
+
+char : Char -> Parser Char i
+char x = MkParser runpchar where
+  runpchar : LTE m i -> Vect m Char -> List (Success Char m)
+  runpchar lte xs {m = Z} = []
+  runpchar lte (c :: xs) {m = (S k)} = if c == x then [MkSuccess c lteRefl xs] else []
+ 
