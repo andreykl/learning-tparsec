@@ -102,6 +102,9 @@ mkne a = MkList a []
 neadd : a -> NEList a -> NEList a
 neadd a (MkList hd tl) = MkList a (hd :: tl)
 
+neToList : NEList a -> List a
+neToList (MkList h t) = h :: t
+
 -- some : All (Parser a) -> All (Parser (NEList a)) --All (Parser (NEList a))
 -- some p = fix _ (\rec => (uncurry neadd <$> (p <&> rec)) <|> (mkne <$> p))
  
@@ -156,36 +159,52 @@ some p = fix _ (\rec => let r = cons <$> (p <&?> rec) in r)
              _ => [MkSuccess (va, Nothing) ltszm lefts]
       _   => []
  
-partial
-schainl : Success a i -> Box (Parser (a -> a)) i -> List (Success a i)
+-- partial
 -- schainl : Success a i -> Box (Parser (a -> a)) i -> List (Success a i)
-schainl {a} s@(MkSuccess va prf left {Size=sz}) bpfa = let p11 = ('a', 1) in res where
-  pfa : Parser (a -> a) sz
-  pfa = call bpfa prf 
-  partial
-  res : List (Success a i)
-  res = let sf = RunParser pfa lteRefl left
-        in 
-          case sf of
-            [(MkSuccess f prf' lefts' {Size=sz'})] => 
-              let
-                vfa = f va
-                ret = s :: schainl (MkSuccess vfa (lteTransitive (lteSuccRight prf') prf) lefts') bpfa
-                arg = bpfa
-              in ret
-            _   => []
+-- -- schainl : Success a i -> Box (Parser (a -> a)) i -> List (Success a i)
+-- schainl {a} s@(MkSuccess va prf left {Size=sz}) bpfa = let p11 = ('a', 1) in res where
+--   pfa : Parser (a -> a) sz
+--   pfa = call bpfa prf 
+--   partial
+--   res : List (Success a i)
+--   res = let sf = RunParser pfa lteRefl left
+--         in 
+--           case sf of
+--             [(MkSuccess f prf' lefts' {Size=sz'})] => 
+--               let
+--                 vfa = f va
+--                 ret = s :: schainl (MkSuccess vfa (lteTransitive (lteSuccRight prf') prf) lefts') bpfa
+--                 arg = bpfa
+--               in ret
+--             _   => []
 
-partial
+ChPair : Type -> Nat -> Type
+ChPair a i = Success a i -> Box (Parser (a -> a)) i -> List (Success a i)
+
+schainl : Success a i -> Box (Parser (a -> a)) i -> List (Success a i)
+schainl {a} sa bpaa = (extractFromPair sa bpaa (fix (ChPair a) $ \rec, ne, box => schainlrec rec ne box)) where
+  extractFromPair : (Success a11 i11) -> Box (Parser (a11 -> a11)) i11 -> ChPair a11 i11 -> List(Success a11 i11)
+  extractFromPair sa1 bpaa1 f = f sa1 bpaa1
+  schainlrec : Box (ChPair a) i11 -> ChPair a i11
+  schainlrec rec sa@(MkSuccess va lt lefts {Size=sz}) box =
+    let
+      lsa' = Functor.map (Success.map (\f => f va)) (RunParser (call box lt) lteRefl lefts)
+    in case lsa' of
+         [sa'@(MkSuccess va' lt' lefts' {Size=sz'})] => 
+           let
+             bx = the (Box (Parser (a -> a)) sz) (MkBox (\ltmsz => call box (lteTransitive ltmsz (lteSuccLeft lt))))
+             res = (call rec lt) sa' bx
+           in sa :: map (\(MkSuccess a1 prf1 lefts1) => MkSuccess a1 (lteTransitive prf1 (lteSuccLeft lt)) lefts1) res
+         _  => [sa]
+
 iterate : Parser a i -> Box (Parser (a -> a)) i -> Parser a i
 iterate pa bpfai = MkParser runprs where
-  partial
   runprs : LTE m i -> Vect m Char -> List (Success a m)
   runprs ltemi xs {m} =
     case RunParser pa ltemi xs of
       [sa@(MkSuccess va prf lefts)] => schainl sa (MkBox (\lt => call bpfai (lteTransitive lt ltemi)))
       _                             => []
 
-partial
 hchainl : Parser a i -> Box (Parser (a -> b -> a)) i -> Box (Parser b) i -> Parser a i
 hchainl pa bpaba bpb = 
     let 
@@ -230,3 +249,5 @@ decimal = MkParser runpdecimal where
       [(MkSuccess nelist ltszm lefts {Size=sz})] => [MkSuccess (cast $ pack $ toList nelist) ltszm lefts]
       _   => []
 
+parse : Parser a m -> Vect m Char -> List (Success a m)
+parse p xs = RunParser p lteRefl xs
